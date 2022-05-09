@@ -139,3 +139,99 @@ func TestIterWithSort(t *testing.T) {
 	it.Close()
 	require.Equal(t, expect, iterKeys)
 }
+
+func TestFilter(t *testing.T) {
+	t.Run("Filter by key", testFilterKeys)
+	t.Run("Filter by values", testFilterValues)
+	t.Run("Filter by key and value", testFilterKV)
+}
+
+func testFilterKeys(t *testing.T) {
+	init := map[int32]string{
+		21: "twenty-one",
+		1:  "one",
+		3:  "three",
+		2:  "two",
+		15: "fifteen",
+		11: "eleven",
+	}
+	expect := []int32{
+		2,
+	}
+	sm := smap.New(init)
+	// sort ascending order
+	filter := sm.Filter(func(k int32, _ string) bool {
+		return (k%2 == 0)
+	})
+	// should only yield a single value
+	require.Equal(t, len(expect), len(filter))
+	require.Equal(t, filter[expect[0]], init[expect[0]])
+
+	// now the same must hold true for odd values
+	expect = []int32{
+		1, 3, 11, 15, 21,
+	}
+	filter = sm.Filter(func(k int32, _ string) bool {
+		return (k%2 != 0)
+	})
+	// should only yield a single value
+	require.Equal(t, len(expect), len(filter))
+	for i := range expect {
+		require.Equal(t, filter[expect[i]], init[expect[i]])
+	}
+}
+
+func testFilterValues(t *testing.T) {
+	init := map[string]int32{
+		"twenty-one": 21,
+		"one":        1,
+		"three":      3,
+		"two":        2,
+		"fifteen":    15,
+		"eleven":     11,
+	}
+	expect := []int32{
+		2,
+	}
+	sm := smap.New(init)
+	// sort ascending order
+	filter := sm.Filter(func(_ string, v int32) bool {
+		return (v%2 == 0)
+	})
+	// should only yield a single value
+	require.Equal(t, len(expect), len(filter))
+
+	// now the same must hold true for odd values
+	expect = []int32{
+		1, 3, 11, 15, 21,
+	}
+	filter = sm.Filter(func(_ string, v int32) bool {
+		return (v%2 != 0)
+	})
+	// should only yield a single value
+	require.Equal(t, len(expect), len(filter))
+}
+
+func testFilterKV(t *testing.T) {
+	init := map[int]uint{
+		1: 1,
+		3: 2,
+		5: 10,
+		8: 64,
+		9: 24,
+	}
+	sm := smap.New(init)
+	// we're filtering values where v%k == 0
+	expect := map[int]uint{
+		1: 1,
+		5: 10,
+		8: 64,
+	}
+
+	filter := sm.Filter(func(k int, v uint) bool {
+		uk := uint(k)
+		return (v%uk == 0)
+	})
+	require.Equal(t, len(expect), len(filter))
+	require.EqualValues(t, expect, filter)
+}

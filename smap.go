@@ -120,6 +120,19 @@ func (s *sMap[K, V]) Keys() []K {
 	return ks
 }
 
+// Filter returns a map containing the elements that matched the filter callback argument
+func (s *sMap[K, V]) Filter(cb func(K, V) bool) map[K]V {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ret := make(map[K]V, len(s.m))
+	for k, v := range s.m {
+		if cb(k, v) {
+			ret[k] = v
+		}
+	}
+	return ret
+}
+
 // Iter returns an iterator, iteration is non-deterministic like a normal map, unless
 // the optional sort function is provided, in which case the keys will be sorted using sort.SliceStable
 // After iterating over the values, Close must be called!
