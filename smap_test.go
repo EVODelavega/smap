@@ -1,6 +1,7 @@
 package smap_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/EVODelavega/smap"
@@ -234,4 +235,71 @@ func testFilterKV(t *testing.T) {
 	})
 	require.Equal(t, len(expect), len(filter))
 	require.EqualValues(t, expect, filter)
+}
+
+type iter interface {
+	Next() bool
+	Prev() bool
+	End() bool
+	Rewind() bool
+	Close()
+}
+
+func TestRIter(t *testing.T) {
+	init := map[string]int{
+		"a": 1,
+		"b": 2,
+		"c": 3,
+		"d": 4,
+		"e": 5,
+	}
+	sm := smap.New(init)
+	it := sm.RIter(func(a, b string) bool {
+		return a < b
+	})
+	rev := sm.RIter(func(a, b string) bool {
+		return a > b
+	})
+	asc := make([]string, 0, len(init))
+	for it.Next() {
+		k, _ := it.Key()
+		v, _ := it.Val()
+		fmt.Printf("%s => %v\n", k, v)
+		asc = append(asc, k)
+	}
+	// just to make sure we can edit while iterating
+	sm.Delete(asc[0])
+	// make sure end of reverse == first of ascending
+	require.True(t, rev.End())
+	k, _ := rev.Key()
+	require.True(t, rev.Rewind())
+	_, ok := sm.Get(k)
+	// value was removed
+	require.False(t, ok)
+	require.True(t, it.End())
+	for rev.Next() {
+		k, _ := rev.Key()
+		v, _ := rev.Val()
+		ak, _ := it.Key()
+		av, _ := it.Val()
+		_ = it.Prev()
+		require.Equal(t, k, ak)
+		require.Equal(t, v, av)
+	}
+	iters := []iter{
+		it, rev,
+	}
+	for _, i := range iters {
+		// closing is mostly for show, but marks an iterator as no longer in use
+		i.Close()
+		// none of these calls should work
+		require.False(t, i.Next())
+		require.False(t, i.Prev())
+		require.False(t, i.End())
+		require.False(t, i.Rewind())
+	}
+	_, err := it.Key()
+	require.Error(t, err)
+	_, err = rev.Val()
+	require.Error(t, err)
 }

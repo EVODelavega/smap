@@ -20,6 +20,14 @@ type sMapIter[K comparable, V any] struct {
 	m    *sMap[K, V]
 }
 
+type rIter[K comparable, V any] struct {
+	i    int
+	keys []K
+	k    K
+	v    V
+	m    map[K]V
+}
+
 // New creates a new sync-safe map
 func New[K comparable, V any](init map[K]V) *sMap[K, V] {
 	r := &sMap[K, V]{
@@ -153,6 +161,28 @@ func (s *sMap[K, V]) Iter(f func(a, b K) bool) *sMapIter[K, V] {
 	return iter
 }
 
+// RIter returns an iterator that doesn't lock the original map.
+// the original map can be freely updated, but the iterator works on a snapshot/copy
+// of the data taken at the time of this call
+func (s *sMap[K, V]) RIter(f func(a, b K) bool) *rIter[K, V] {
+	// get a copy of the map
+	cpy := s.Raw()
+	keys := make([]K, 0, len(cpy))
+	for k := range cpy {
+		keys = append(keys, k)
+	}
+	if f != nil {
+		sort.SliceStable(keys, func(i, j int) bool {
+			return f(keys[i], keys[j])
+		})
+	}
+	return &rIter[K, V]{
+		m:    cpy,
+		i:    0,
+		keys: keys,
+	}
+}
+
 // Next moves the iterator to the next element in the map, returns false if we already reached the end
 func (i *sMapIter[K, V]) Next() bool {
 	if i.i >= len(i.keys) {
@@ -197,4 +227,72 @@ func (i *sMapIter[K, V]) Close() {
 	i.m = nil
 	// release lock
 	i.l.Unlock()
+}
+
+// Rewind resets the iterator to the start, returns false if empty
+func (r *rIter[K, V]) Rewind() bool {
+	r.i = 0
+	if r.i >= len(r.keys) {
+		return false
+	}
+	return true
+}
+
+// End sets the iterator to the end, false if empty
+func (r *rIter[K, V]) End() bool {
+	r.i = len(r.keys)
+	return r.Prev()
+}
+
+// Next move the iterator forwards, returns false if we reached the end
+func (r *rIter[K, V]) Next() bool {
+	if r.i >= len(r.keys) {
+		return false
+	}
+	r.k = r.keys[r.i]
+	r.v = r.m[r.k]
+	r.i++
+	return true
+}
+
+// Prev moves the iterator back if possible, returns false if we're at the start
+func (r *rIter[K, V]) Prev() bool {
+	if r.i == 0 {
+		return false
+	}
+	r.i--
+	r.k = r.keys[r.i]
+	r.v = r.m[r.k]
+	return true
+}
+
+// Key gets the current Key
+func (r *rIter[K, V]) Key() (K, error) {
+	var k K
+	if r.keys == nil {
+		return k, errors.New("iterator closed")
+	}
+	return r.k, nil
+}
+
+// Val gets the current value
+func (r *rIter[K, V]) Val() (V, error) {
+	var v V
+	if r.keys == nil {
+		return v, errors.New("iterator closed")
+	}
+	return r.v, nil
+}
+
+// Close empties iterator, cannot be used afterwards
+func (r *rIter[K, V]) Close() {
+	var (
+		k K
+		v V
+	)
+	r.keys = nil
+	r.k = k
+	r.v = v
+	r.i = 0
+	r.m = nil
 }
